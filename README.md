@@ -9,7 +9,7 @@ Add `ant` to your list of dependencies in `mix.exs` and run `mix deps.get` to in
 ```elixir
 def deps do
   [
-    {:ant, "~> 0.0.1"}
+    {:ant, "~> 0.0.2"}
   ]
 end
 ```
@@ -185,5 +185,21 @@ iex(1)> Ant.Workers.list_workers(%{
       }
     ]}
 ```
+
+Supported options:
+- `limit`: returns up to the specified number of workers.
+  ```elixir
+  iex(1)> Ant.Workers.list_workers(
+  ...(1)>   %{status: :failed},
+  ...(1)>   limit: 10
+  ...(1)> )
+    {:ok,
+      [
+        %Ant.Worker{...},
+        ...
+      ]
+    }
+  ```
+
 2. `Ant.Workers.get_worker(id)` - returns a worker by id
 3. `Ant.Workers.delete_worker(worker)` - deletes a worker. It's not recommended to use this function directly.

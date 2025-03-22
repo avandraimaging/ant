@@ -59,7 +59,7 @@ defmodule Ant.Queue do
 
   @impl true
   def handle_info(:check_workers, %{stuck_workers: []} = state) do
-    {:ok, workers} = list_workers_to_process(state.queue_name)
+    {:ok, workers} = list_workers_to_process(state.queue_name, limit: state.concurrency)
 
     workers
     |> Enum.take(state.concurrency)
@@ -77,7 +77,8 @@ defmodule Ant.Queue do
         %{stuck_workers: stuck_workers, concurrency: concurrency} = state
       )
       when length(stuck_workers) < concurrency do
-    {:ok, enqueued_workers} = list_workers_to_process(state.queue_name)
+    {:ok, enqueued_workers} =
+      list_workers_to_process(state.queue_name, limit: state.concurrency - length(stuck_workers))
 
     workers = stuck_workers ++ enqueued_workers
     Enum.each(workers, &run_worker/1)
@@ -103,9 +104,14 @@ defmodule Ant.Queue do
   def handle_call({:dequeue, worker}, _from, state) do
     processing_workers = Enum.reject(state.processing_workers, &(&1.id == worker.id))
 
-    # Check for any workers to process immediately after dequeuing the current one.
-    #
-    state = schedule_check(state, 0)
+    state =
+      if length(processing_workers) < length(state.processing_workers) do
+        # Check for any workers to process immediately after dequeuing the current one.
+        #
+        schedule_check(state, 0)
+      else
+        state
+      end
 
     {:reply, :ok, %{state | processing_workers: processing_workers}}
   end
@@ -123,13 +129,33 @@ defmodule Ant.Queue do
     end
   end
 
-  defp list_workers_to_process(queue_name) do
+  defp list_workers_to_process(queue_name, opts) do
+    # Get workers in priority order: scheduled -> retrying -> enqueued
+    # Adjust limits for each type based on previous results
+    #
+    calculate_limit = fn limit, processed_workers ->
+      limit - length(processed_workers)
+    end
+
     with {:ok, scheduled_workers} <-
-           Workers.list_scheduled_workers(%{queue_name: queue_name}, DateTime.utc_now()),
+           Workers.list_scheduled_workers(
+             %{queue_name: queue_name},
+             DateTime.utc_now(),
+             opts
+           ),
+         retrying_limit = calculate_limit.(Keyword.get(opts, :limit), scheduled_workers),
          {:ok, retrying_workers} <-
-           Workers.list_retrying_workers(%{queue_name: queue_name}, DateTime.utc_now()),
+           Workers.list_retrying_workers(
+             %{queue_name: queue_name},
+             DateTime.utc_now(),
+             Keyword.put(opts, :limit, retrying_limit)
+           ),
+         enqueued_limit = calculate_limit.(retrying_limit, retrying_workers),
          {:ok, enqueued_workers} <-
-           Workers.list_workers(%{queue_name: queue_name, status: :enqueued}) do
+           Workers.list_workers(
+             %{queue_name: queue_name, status: :enqueued},
+             Keyword.put(opts, :limit, enqueued_limit)
+           ) do
       {:ok, scheduled_workers ++ retrying_workers ++ enqueued_workers}
     end
   end

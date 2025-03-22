@@ -25,28 +25,34 @@ defmodule Ant.Database.Adapters.Mnesia do
   # def get_by(db_table, params) do
   # end
 
-  def filter(db_table, params) do
+  def filter(db_table, params, opts \\ []) do
     table_columns = get_table_columns(db_table)
+    limit = Keyword.get(opts, :limit)
 
     {:atomic, records} =
       :mnesia.transaction(fn ->
-        attributes = Enum.map(table_columns, &Map.get(params, &1, :_))
-        row = List.to_tuple([db_table | attributes])
+        attributes = Enum.map(table_columns, &Map.get(params, &1))
 
-        :mnesia.select(db_table, [
-          {
-            row,
-            [],
-            [:"$_"]
-          }
-        ])
+        match_pattern =
+          List.to_tuple([
+            db_table
+            | Enum.map(attributes, fn
+                nil -> :_
+                val -> val
+              end)
+          ])
+
+        :mnesia.match_object(match_pattern)
       end)
 
-    Enum.map(records, &to_map(&1, table_columns))
+    records
+    |> Enum.map(&to_map(&1, table_columns))
+    |> maybe_limit(limit)
   end
 
-  def all(db_table) do
+  def all(db_table, opts \\ []) do
     table_columns = get_table_columns(db_table)
+    limit = Keyword.get(opts, :limit)
 
     {:atomic, records} =
       :mnesia.transaction(fn ->
@@ -57,7 +63,7 @@ defmodule Ant.Database.Adapters.Mnesia do
         )
       end)
 
-    records
+    maybe_limit(records, limit)
   end
 
   def insert(db_table, params) do
@@ -112,7 +118,8 @@ defmodule Ant.Database.Adapters.Mnesia do
   # end
 
   def delete(db_table, id) do
-    with {:atomic, :ok} <- :mnesia.transaction(fn -> :mnesia.delete({db_table, id}) end) do
+    with {:ok, _} <- get(db_table, id),
+         {:atomic, :ok} <- :mnesia.transaction(fn -> :mnesia.delete({db_table, id}) end) do
       :ok
     end
   end
@@ -131,4 +138,7 @@ defmodule Ant.Database.Adapters.Mnesia do
     |> Enum.zip(values)
     |> Enum.into(%{})
   end
+
+  defp maybe_limit(list, limit) when is_integer(limit) and limit > 0, do: Enum.take(list, limit)
+  defp maybe_limit(list, _), do: list
 end

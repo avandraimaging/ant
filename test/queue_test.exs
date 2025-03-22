@@ -124,9 +124,29 @@ defmodule Ant.QueueTest do
     test "runs enqueued and scheduled workers if there is no stuck workers" do
       test_pid = self()
 
-      expect(Ant.Workers, :list_scheduled_workers, fn %{queue_name: "default"}, _date_time ->
-        {:ok, [build_worker(:scheduled)]}
-      end)
+      expect(
+        Ant.Workers,
+        :list_scheduled_workers,
+        fn %{queue_name: "default"}, _date_time, _opts ->
+          {:ok, [build_worker(:scheduled)]}
+        end
+      )
+
+      expect(
+        Ant.Workers,
+        :list_retrying_workers,
+        fn %{queue_name: "default"}, _date_time, _opts ->
+          {:ok, []}
+        end
+      )
+
+      expect(
+        Ant.Workers,
+        :list_workers,
+        fn %{queue_name: "default", status: :enqueued}, _opts ->
+          {:ok, [build_worker(:enqueued)]}
+        end
+      )
 
       interval_in_ms = 5
 
@@ -137,12 +157,6 @@ defmodule Ant.QueueTest do
 
         {:ok, String.to_atom("#{status}_pid_for_periodic_check")}
       end)
-
-      expect(
-        Ant.Workers,
-        :list_workers,
-        fn %{queue_name: "default", status: :enqueued} -> {:ok, [build_worker(:enqueued)]} end
-      )
 
       expect(Ant.Worker, :perform, 2, fn pid ->
         status =

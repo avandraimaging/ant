@@ -12,15 +12,15 @@ defmodule Ant.Repo do
   # def get_by(queryable, params) do
   # end
 
-  def all(db_table) do
+  def all(db_table, opts \\ []) do
     db_table
-    |> Ant.Database.Adapters.Mnesia.all()
+    |> Ant.Database.Adapters.Mnesia.all(opts)
     |> Enum.map(&to_struct(db_table, &1))
   end
 
-  def filter(db_table, params) do
+  def filter(db_table, params, opts \\ []) do
     db_table
-    |> Ant.Database.Adapters.Mnesia.filter(params)
+    |> Ant.Database.Adapters.Mnesia.filter(params, opts)
     |> Enum.map(&to_struct(db_table, &1))
   end
 
