@@ -20,7 +20,7 @@ Define a worker module with `perform` function. Argument is a map. Try to use si
 defmodule MyWorker do
   use Ant.Worker
 
-  def perform(%{first: first, "second" => second} = _args) do
+  def perform(%{args: %{first: first, second: second}} = _worker) do
     # some logic
 
     # has to return :ok or {:ok, result}
