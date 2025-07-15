@@ -226,6 +226,54 @@ defmodule Ant.WorkerTest do
           assert errors |> Enum.map(& &1.attempt) |> Enum.sort() == [1, 2, 3]
       end
     end
+
+    test "handles exceptions without message gracefully" do
+      defmodule ExceptionWorkerHandlesExceptionWithoutMessage do
+        use Ant.Worker, max_attempts: 3
+
+        def perform(_worker), do: whoops(%{status: :error})
+
+        def calculate_delay(_worker), do: 0
+
+        defp whoops(%{status: :ok}) do
+          nil
+        end
+      end
+
+      {:ok, worker} =
+        %{a: 1}
+        |> ExceptionWorkerHandlesExceptionWithoutMessage.build()
+        |> Ant.Workers.create_worker()
+
+      expect(Ant.Queue, :dequeue, fn worker_to_dequeue ->
+        assert worker_to_dequeue.id == worker.id
+
+        :ok
+      end)
+
+      {:ok, pid} = Worker.start_link(worker)
+
+      assert Worker.perform(pid) == :ok
+
+      ref = Process.monitor(pid)
+
+      receive do
+        {:DOWN, ^ref, :process, ^pid, _reason} ->
+          {:ok, updated_worker} = Ant.Repo.get(:ant_workers, worker.id)
+
+          assert updated_worker.status == :retrying
+          assert updated_worker.attempts == 1
+          assert updated_worker.scheduled_at
+          assert updated_worker.updated_at
+
+          assert [error] = updated_worker.errors
+
+          assert error.error ==
+                   "%FunctionClauseError{module: Ant.WorkerTest.ExceptionWorkerHandlesExceptionWithoutMessage, function: :whoops, arity: 1, kind: nil, args: nil, clauses: nil}"
+
+          assert error.attempt == 1
+      end
+    end
   end
 
   describe "build/2" do
