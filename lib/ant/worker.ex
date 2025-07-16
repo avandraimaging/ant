@@ -174,7 +174,7 @@ defmodule Ant.Worker do
 
     error = %{
       attempt: attempts,
-      error: exception.message,
+      error: Map.get(exception, :message, inspect(exception)),
       stack_trace: Exception.format_stacktrace(stack_trace),
       attempted_at: DateTime.utc_now()
     }
