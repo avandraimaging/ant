@@ -1,6 +1,12 @@
 # Changelog
 
 
+## [0.0.3]
+
+### Fixed
+
+- Prevented GenServer crash on retry when exception lacks a `:message` key
+
 ## [0.0.2]
 
 ### Fixed
