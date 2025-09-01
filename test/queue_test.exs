@@ -179,6 +179,21 @@ defmodule Ant.QueueTest do
     end
   end
 
+  test "can update concurrency on the fly" do
+    {:ok, less} =
+      Queue.start_link(queue: "less", config: [check_interval: 100, concurrency: 1])
+
+    {:ok, more} = Queue.start_link(queue: "more", config: [check_interval: 100, concurrency: 2])
+
+    assert :sys.get_state(less).concurrency == 1
+    assert :sys.get_state(more).concurrency == 2
+
+    :ok = Queue.set_concurrency("more", 5)
+
+    assert :sys.get_state(less).concurrency == 1
+    assert :sys.get_state(more).concurrency == 5
+  end
+
   defp build_worker(id, status) do
     status
     |> build_worker()

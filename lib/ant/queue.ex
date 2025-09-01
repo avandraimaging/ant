@@ -20,6 +20,11 @@ defmodule Ant.Queue do
     GenServer.call(get_tuple_identifier(worker.queue_name), {:dequeue, worker})
   end
 
+  def set_concurrency(queue_name, concurrency)
+      when is_binary(queue_name) and is_integer(concurrency) do
+    GenServer.call(get_tuple_identifier(queue_name), {:set_concurrency, concurrency})
+  end
+
   # Server Callbacks
 
   @impl true
@@ -114,6 +119,10 @@ defmodule Ant.Queue do
       end
 
     {:reply, :ok, %{state | processing_workers: processing_workers}}
+  end
+
+  def handle_call({:set_concurrency, concurrency}, _from, state) do
+    {:reply, :ok, %{state | concurrency: concurrency}}
   end
 
   # Helper Functions
