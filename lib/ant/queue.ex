@@ -69,7 +69,7 @@ defmodule Ant.Queue do
     workers
     |> Enum.take(state.concurrency)
     |> Enum.reject(&(&1 in state.processing_workers))
-    |> Enum.map(&update_worker_to_running_status/1)
+    |> Enum.map(&Ant.Worker.update_worker_to_running_status/1)
     |> Enum.each(&run_worker/1)
 
     state = schedule_check(state)
@@ -128,18 +128,6 @@ defmodule Ant.Queue do
   end
 
   # Helper Functions
-
-  def update_worker_to_running_status(worker) do
-    {:ok, updated} =
-      Ant.Workers.update_worker(worker.id, %{
-        status: :running,
-        # prevents the same worker to be picked up later
-        scheduled_at: nil,
-        attempts: worker.attempts + 1
-      })
-
-    updated
-  end
 
   # Returns workers that remain in the non-completed state and should be re-run.
   #

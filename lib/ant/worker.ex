@@ -114,11 +114,11 @@ defmodule Ant.Worker do
     end
   end
 
-  defp update_worker_to_running_status(%Ant.Worker{status: :running} = worker) do
+  def update_worker_to_running_status(%Ant.Worker{status: :running} = worker) do
     worker
   end
 
-  defp update_worker_to_running_status(worker) do
+  def update_worker_to_running_status(worker) do
     {:ok, updated} =
       Ant.Workers.update_worker(worker.id, %{
         status: :running,
