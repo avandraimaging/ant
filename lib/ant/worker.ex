@@ -100,18 +100,7 @@ defmodule Ant.Worker do
   end
 
   def handle_cast(:perform, state) do
-    worker = state.worker
-
-    {:ok, worker} =
-      Ant.Workers.update_worker(
-        worker.id,
-        %{
-          status: :running,
-          # prevents the same worker to be picked up later
-          scheduled_at: nil,
-          attempts: worker.attempts + 1
-        }
-      )
+    worker = state.worker |> update_worker_to_running_status()
 
     state = Map.put(state, :worker, worker)
 
@@ -123,6 +112,22 @@ defmodule Ant.Worker do
       exception ->
         handle_exception(exception, __STACKTRACE__, state)
     end
+  end
+
+  def update_worker_to_running_status(%Ant.Worker{status: :running} = worker) do
+    worker
+  end
+
+  def update_worker_to_running_status(worker) do
+    {:ok, updated} =
+      Ant.Workers.update_worker(worker.id, %{
+        status: :running,
+        # prevents the same worker to be picked up later
+        scheduled_at: nil,
+        attempts: worker.attempts + 1
+      })
+
+    updated
   end
 
   defp handle_result(:ok, state) do

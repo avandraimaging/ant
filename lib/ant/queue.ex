@@ -68,6 +68,8 @@ defmodule Ant.Queue do
 
     workers
     |> Enum.take(state.concurrency)
+    |> Enum.reject(&(&1 in state.processing_workers))
+    |> Enum.map(&Ant.Worker.update_worker_to_running_status/1)
     |> Enum.each(&run_worker/1)
 
     state = schedule_check(state)
