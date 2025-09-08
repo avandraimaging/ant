@@ -148,6 +148,15 @@ defmodule Ant.QueueTest do
         end
       )
 
+      expect(
+        Ant.Workers,
+        :update_worker,
+        2,
+        fn id, _ ->
+          {:ok, build_worker(:running) |> Map.put(:id, id)}
+        end
+      )
+
       interval_in_ms = 5
 
       {:ok, _pid} = Queue.start_link(queue: "default", config: [check_interval: interval_in_ms])
@@ -161,8 +170,7 @@ defmodule Ant.QueueTest do
       expect(Ant.Worker, :perform, 2, fn pid ->
         status =
           case pid do
-            :enqueued_pid_for_periodic_check -> :enqueued
-            :scheduled_pid_for_periodic_check -> :scheduled
+            :running_pid_for_periodic_check -> :running
           end
 
         send(test_pid, {:"#{status}_worker_performed", :periodic_check})
@@ -174,8 +182,7 @@ defmodule Ant.QueueTest do
 
       Process.sleep(interval_in_ms * 2)
 
-      assert_receive({:enqueued_worker_performed, :periodic_check})
-      assert_receive({:scheduled_worker_performed, :periodic_check})
+      assert_receive({:running_worker_performed, :periodic_check})
     end
   end
 
