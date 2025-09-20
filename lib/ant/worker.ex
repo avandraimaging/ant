@@ -46,6 +46,7 @@ defmodule Ant.Worker do
       )
 
     max_attempts = Keyword.get(opts, :max_attempts, @default_max_attempts)
+    unique = Keyword.get(opts, :unique, [])
 
     quote do
       @behaviour Ant.Worker
@@ -59,6 +60,11 @@ defmodule Ant.Worker do
       end
 
       def build(args, opts \\ []) do
+        opts =
+          opts
+          |> Keyword.put_new(:max_attempts, unquote(max_attempts))
+          |> Keyword.put_new(:unique, unquote(unique))
+
         %Ant.Worker{
           worker_module: __MODULE__,
           args: args,
@@ -67,7 +73,7 @@ defmodule Ant.Worker do
           attempts: 0,
           scheduled_at: DateTime.utc_now(),
           errors: [],
-          opts: Keyword.put_new(opts, :max_attempts, unquote(max_attempts))
+          opts: opts
         }
       end
     end

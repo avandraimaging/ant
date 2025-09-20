@@ -63,7 +63,7 @@ defmodule Ant.WorkerTest do
       assert worker.updated_at
       assert worker.attempts == 0
       assert worker.errors == []
-      assert worker.opts == [max_attempts: 1]
+      assert worker.opts == [unique: [], max_attempts: 1]
     end
   end
 

@@ -1,20 +1,23 @@
 defmodule Ant.Workers do
   alias Ant.Repo
+  alias Ant.WorkerUniquenessChecker
 
-  @spec create_worker(Ant.Worker.t()) :: :ok
+  @spec create_worker(Ant.Worker.t()) :: {:ok, Ant.Worker.t()} | {:error, atom()}
   def create_worker(worker) do
-    params = %{
-      worker_module: worker.worker_module,
-      status: :enqueued,
-      attempts: 0,
-      queue_name: worker.queue_name,
-      args: worker.args,
-      scheduled_at: worker.scheduled_at,
-      errors: [],
-      opts: worker.opts
-    }
+    with :ok <- WorkerUniquenessChecker.call(worker) do
+      params = %{
+        worker_module: worker.worker_module,
+        status: :enqueued,
+        attempts: 0,
+        queue_name: worker.queue_name,
+        args: worker.args,
+        scheduled_at: worker.scheduled_at,
+        errors: [],
+        opts: worker.opts
+      }
 
-    Repo.insert(:ant_workers, params)
+      Repo.insert(:ant_workers, params)
+    end
   end
 
   @spec update_worker(integer(), map()) :: {:ok, Ant.Worker.t()} | {:error, atom()}
