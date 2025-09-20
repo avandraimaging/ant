@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0]
+
+### Added
+
+- Ability to set uniqueness constraints to prevent duplicate job creation
+
+### Changed
+
+- Queue updates worker's status to `running` before spawning a new process to address [race condition issue](https://github.com/MikeAndrianov/ant/pull/5)
 
 ## [0.0.3]
 

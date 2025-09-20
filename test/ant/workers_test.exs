@@ -1,12 +1,23 @@
 defmodule Ant.WorkersTest do
   use Ant.TestCase
   use MnesiaTesting
+  use Mimic
   alias Ant.Workers
+  alias Ant.WorkerUniquenessChecker
 
   defmodule TestWorker do
     use Ant.Worker
 
     def perform(_worker), do: :ok
+  end
+
+  setup :set_mimic_global
+  setup :verify_on_exit!
+
+  setup do
+    Mimic.copy(WorkerUniquenessChecker)
+
+    :ok
   end
 
   describe "list_workers/2" do
@@ -151,6 +162,60 @@ defmodule Ant.WorkersTest do
 
       assert length(result) == 5
       assert_lists_contain_same(result, workers, equals_by: :id)
+    end
+  end
+
+  describe "create_worker/1" do
+    test "creates worker when uniqueness check passes" do
+      worker = TestWorker.build(%{email: "test@example.com"})
+
+      expect(WorkerUniquenessChecker, :call, fn ^worker ->
+        :ok
+      end)
+
+      assert {:ok, created_worker} = Workers.create_worker(worker)
+      assert created_worker.id
+      assert created_worker.worker_module == TestWorker
+      assert created_worker.args == %{email: "test@example.com"}
+      assert created_worker.status == :enqueued
+    end
+
+    test "returns error when uniqueness check fails" do
+      worker = TestWorker.build(%{email: "test@example.com"})
+
+      expect(WorkerUniquenessChecker, :call, fn ^worker ->
+        {:error, :already_exists}
+      end)
+
+      assert Workers.create_worker(worker) == {:error, :already_exists}
+    end
+
+    test "propagates other errors from uniqueness checker" do
+      worker = TestWorker.build(%{email: "test@example.com"})
+
+      expect(WorkerUniquenessChecker, :call, fn ^worker ->
+        {:error, :database_error}
+      end)
+
+      assert Workers.create_worker(worker) == {:error, :database_error}
+    end
+
+    test "calls uniqueness checker with worker containing unique config" do
+      defmodule UniqueTestWorker do
+        use Ant.Worker, unique: [args: [:email]]
+
+        def perform(_worker), do: :ok
+      end
+
+      worker = UniqueTestWorker.build(%{email: "test@example.com"})
+
+      expect(WorkerUniquenessChecker, :call, fn worker_arg ->
+        assert worker_arg.opts[:unique] == [args: [:email]]
+
+        :ok
+      end)
+
+      assert {:ok, _created_worker} = Workers.create_worker(worker)
     end
   end
 

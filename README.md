@@ -9,7 +9,7 @@ Add `ant` to your list of dependencies in `mix.exs` and run `mix deps.get` to in
 ```elixir
 def deps do
   [
-    {:ant, "~> 0.0.2"}
+    {:ant, "~> 0.1.0"}
   ]
 end
 ```
@@ -138,6 +138,74 @@ config :ant,
     ttl: :infinity
   ]
 ```
+
+### Job Uniqueness
+
+By default, it's allowed to enqueue multiple jobs with identical arguments. You can prevent insertion of duplicated jobs by configuring uniqueness constraints based on job arguments:
+
+```elixir
+defmodule MyUniqueWorker do
+  use Ant.Worker, unique: [args: [:email, :user_name]]
+
+  def perform(%{args: %{email: email, user_name: user_name}} = _worker) do
+    # Send email logic
+    :ok
+  end
+end
+```
+
+With this configuration, attempting to create duplicate jobs will return `{:error, :already_exists}`:
+
+```elixir
+args = %{email: "user@example.com", user_name: "john_doe"}
+
+{:ok, worker} = MyUniqueWorker.perform_async(args)
+MyUniqueWorker.perform_async(args) # => {:error, :already_exists}
+```
+
+#### Configuring Status-Based Uniqueness
+
+By default, uniqueness checking only applies to jobs in active states: `:enqueued`, `:running`, `:scheduled`, `:retrying`. You can customize which statuses are considered for uniqueness checking:
+
+**Check all statuses (including completed/failed jobs):**
+```elixir
+defmodule MyWorker do
+  use Ant.Worker, unique: [args: [:email], statuses: :all]
+
+  def perform(_worker), do: :ok
+end
+```
+
+**Check only specific statuses:**
+```elixir
+defmodule MyWorker do
+  use Ant.Worker, unique: [args: [:email], statuses: [:enqueued, :running]]
+
+  def perform(_worker), do: :ok
+end
+```
+
+**Check only a single status:**
+```elixir
+defmodule MyWorker do
+  use Ant.Worker, unique: [args: [:email], statuses: :running]
+
+  def perform(_worker), do: :ok
+end
+```
+
+**Status configuration examples:**
+- `statuses: :all` - Prevents duplicates across all job statuses
+- `statuses: [:enqueued, :running]` - Only checks enqueued and running jobs
+- `statuses: :completed` - Only prevents duplicates if a completed job exists
+- `statuses: []` - Disables uniqueness checking (allows all duplicates)
+
+**Important notes about uniqueness:**
+
+- Default behavior checks active states: `:enqueued`, `:running`, `:scheduled`, `:retrying`
+- Uniqueness is scoped to both the worker module and queue
+- If any specified unique attribute is missing (`nil`) from the job arguments, uniqueness checking is bypassed
+- Only jobs with all specified unique attributes present will be considered for duplicate detection
 
 ## Operations with Workers
 
