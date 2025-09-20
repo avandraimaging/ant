@@ -102,12 +102,11 @@ defmodule Ant.Worker do
   def handle_cast(:perform, state) do
     worker = state.worker
 
+    # Status is already set to :running by Queue.run_worker/1
     {:ok, worker} =
       Ant.Workers.update_worker(
         worker.id,
         %{
-          status: :running,
-          # prevents the same worker to be picked up later
           scheduled_at: nil,
           attempts: worker.attempts + 1
         }

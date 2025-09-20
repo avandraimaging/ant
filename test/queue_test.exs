@@ -24,42 +24,51 @@ defmodule Ant.QueueTest do
   setup :verify_on_exit!
 
   test "runs pending workers on start" do
+    running_worker = build_worker(:running)
+    retrying_worker = build_worker(:retrying)
+
     expect(
       Ant.Workers,
       :list_workers,
-      fn %{status: :running, queue_name: "default"} -> {:ok, [build_worker(:running)]} end
+      fn %{status: :running, queue_name: "default"} -> {:ok, [running_worker]} end
     )
 
     expect(
       Ant.Workers,
       :list_retrying_workers,
-      fn %{queue_name: "default"}, _date_time -> {:ok, [build_worker(:retrying)]} end
+      fn %{queue_name: "default"}, _date_time -> {:ok, [retrying_worker]} end
     )
 
-    expect(DynamicSupervisor, :start_child, 2, fn Ant.WorkersSupervisor, child_spec ->
-      assert {Ant.Worker, :start_link, [%Ant.Worker{status: status}]} = child_spec.start
+    expect(Ant.Workers, :update_worker, 2, fn worker_id, %{status: :running} ->
+      worker = if worker_id == running_worker.id, do: running_worker, else: retrying_worker
 
-      {:ok, String.to_atom("#{status}_pid")}
+      {:ok, %{worker | status: :running}}
+    end)
+
+    expect(DynamicSupervisor, :start_child, 2, fn Ant.WorkersSupervisor, child_spec ->
+      assert {
+               Ant.Worker,
+               :start_link,
+               [%Ant.Worker{id: worker_id, status: :running}]
+             } = child_spec.start
+
+      {:ok, :"#{worker_id}_pid"}
     end)
 
     test_pid = self()
 
-    expect(Ant.Worker, :perform, fn :running_pid ->
-      send(test_pid, {:worker_performed, :running})
-
-      :ok
-    end)
-
-    expect(Ant.Worker, :perform, fn :retrying_pid ->
-      send(test_pid, {:worker_performed, :retrying})
+    expect(Ant.Worker, :perform, 2, fn pid ->
+      send(test_pid, {:worker_performed, pid})
 
       :ok
     end)
 
     {:ok, _pid} = Queue.start_link(queue: "default", config: [check_interval: 10])
 
-    assert_receive({:worker_performed, :running})
-    assert_receive({:worker_performed, :retrying})
+    running_worker_pid = :"#{running_worker.id}_pid"
+    retrying_worker_pid = :"#{retrying_worker.id}_pid"
+    assert_receive({:worker_performed, ^running_worker_pid})
+    assert_receive({:worker_performed, ^retrying_worker_pid})
   end
 
   describe "periodically checks workers" do
@@ -90,6 +99,10 @@ defmodule Ant.QueueTest do
 
       interval_in_ms = 5
 
+      expect(Ant.Workers, :update_worker, 4, fn worker_id, %{status: :running} ->
+        {:ok, build_worker(worker_id, :running)}
+      end)
+
       {:ok, _pid} =
         Queue.start_link(
           queue: "default",
@@ -97,38 +110,45 @@ defmodule Ant.QueueTest do
         )
 
       expect(DynamicSupervisor, :start_child, 4, fn Ant.WorkersSupervisor, child_spec ->
-        assert {Ant.Worker, :start_link, [%Ant.Worker{status: status, id: id}]} = child_spec.start
+        assert {
+                 Ant.Worker,
+                 :start_link,
+                 [%Ant.Worker{status: :running, id: id}]
+               } = child_spec.start
 
-        {:ok, String.to_atom("#{status}_pid_for_periodic_check_#{id}")}
+        {:ok, :"pid_for_periodic_check_#{id}"}
       end)
 
       expect(Ant.Worker, :perform, 4, fn worker_pid ->
-        send(test_pid, {String.to_atom("#{worker_pid}_performed"), :periodic_check})
+        send(test_pid, {:"#{worker_pid}_performed", :periodic_check})
 
         :ok
       end)
 
       reject(Ant.Workers, :list_workers, 1)
 
-      assert_receive({:running_pid_for_periodic_check_1_performed, :periodic_check})
-      assert_receive({:running_pid_for_periodic_check_2_performed, :periodic_check})
+      assert_receive({:pid_for_periodic_check_1_performed, :periodic_check})
+      assert_receive({:pid_for_periodic_check_2_performed, :periodic_check})
 
       # On the next recurring check
 
       Process.sleep(interval_in_ms * 2)
 
-      assert_receive({:running_pid_for_periodic_check_3_performed, :periodic_check})
-      assert_receive({:retrying_pid_for_periodic_check_4_performed, :periodic_check})
+      assert_receive({:pid_for_periodic_check_3_performed, :periodic_check})
+      assert_receive({:pid_for_periodic_check_4_performed, :periodic_check})
     end
 
     test "runs enqueued and scheduled workers if there is no stuck workers" do
       test_pid = self()
 
+      scheduled_worker = build_worker(1, :scheduled)
+      enqueued_worker = build_worker(2, :enqueued)
+
       expect(
         Ant.Workers,
         :list_scheduled_workers,
         fn %{queue_name: "default"}, _date_time, _opts ->
-          {:ok, [build_worker(:scheduled)]}
+          {:ok, [scheduled_worker]}
         end
       )
 
@@ -144,25 +164,35 @@ defmodule Ant.QueueTest do
         Ant.Workers,
         :list_workers,
         fn %{queue_name: "default", status: :enqueued}, _opts ->
-          {:ok, [build_worker(:enqueued)]}
+          {:ok, [enqueued_worker]}
         end
       )
 
       interval_in_ms = 5
 
+      expect(Ant.Workers, :update_worker, 2, fn worker_id, %{status: :running} ->
+        worker = if worker_id == scheduled_worker.id, do: scheduled_worker, else: enqueued_worker
+
+        {:ok, %{worker | status: :running}}
+      end)
+
       {:ok, _pid} = Queue.start_link(queue: "default", config: [check_interval: interval_in_ms])
 
       expect(DynamicSupervisor, :start_child, 2, fn Ant.WorkersSupervisor, child_spec ->
-        assert {Ant.Worker, :start_link, [%Ant.Worker{status: status}]} = child_spec.start
+        assert {Ant.Worker, :start_link, [%Ant.Worker{id: worker_id, status: :running}]} =
+                 child_spec.start
 
-        {:ok, String.to_atom("#{status}_pid_for_periodic_check")}
+        {:ok, :"pid_for_periodic_check_#{worker_id}"}
       end)
 
       expect(Ant.Worker, :perform, 2, fn pid ->
+        periodic_check_enqueued_worker_pid = :"pid_for_periodic_check_#{enqueued_worker.id}"
+        periodic_check_scheduled_worker_pid = :"pid_for_periodic_check_#{scheduled_worker.id}"
+
         status =
           case pid do
-            :enqueued_pid_for_periodic_check -> :enqueued
-            :scheduled_pid_for_periodic_check -> :scheduled
+            ^periodic_check_enqueued_worker_pid -> :enqueued
+            ^periodic_check_scheduled_worker_pid -> :scheduled
           end
 
         send(test_pid, {:"#{status}_worker_performed", :periodic_check})

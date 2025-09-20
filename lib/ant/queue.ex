@@ -185,7 +185,9 @@ defmodule Ant.Queue do
   end
 
   defp run_worker(worker) do
-    child_spec = Supervisor.child_spec({Ant.Worker, worker}, restart: :transient)
+    {:ok, updated_worker} = Workers.update_worker(worker.id, %{status: :running})
+
+    child_spec = Supervisor.child_spec({Ant.Worker, updated_worker}, restart: :transient)
     {:ok, pid} = DynamicSupervisor.start_child(Ant.WorkersSupervisor, child_spec)
 
     Ant.Worker.perform(pid)
